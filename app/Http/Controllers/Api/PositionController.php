@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\PositionReceived;
 use App\Http\Controllers\Controller;
 use App\Models\Position;
 use App\Services\StayDetector;
@@ -22,6 +23,8 @@ class PositionController extends Controller
         ]);
 
         $position = $request->user()->positions()->create($data);
+
+        PositionReceived::dispatch($position);
 
         return response()->json([
             'data' => $this->transform($position),

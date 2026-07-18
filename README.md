@@ -23,11 +23,12 @@ docker run --rm -v "${PWD}:/app" -w /app node:22-bookworm bash -c "npm install &
 
 - Web: http://localhost:8080
 - シードユーザー: `test@example.com` / `password`
+- リアルタイム更新: `reverb` サービス（Laravel Reverb）が WebSocket を担当。nginx の `/app` 経由で接続
 
 ## Web の使い方
 
 1. ログインする
-2. マップ画面で全ユーザーの現在地を確認（約5秒ポーリング）
+2. マップ画面で全ユーザーの現在地を確認（位置API受信時にリアルタイム更新）
 3. 移動履歴はユーザー・日付を指定して表示（軌跡・滞在・方向矢印）
 
 ## バックグラウンド位置送信（推奨: OwnTracks）
@@ -62,6 +63,21 @@ curl.exe -u walker@example.com:password -H "Content-Type: application/json" -d "
 ```
 
 成功時は空配列 `[]` が返ります。
+
+### PowerShell で位置送信テスト
+
+リアルタイム地図更新の確認用スクリプトです。
+
+```powershell
+# Sanctum: ログイン → POST /api/positions（1回）
+.\scripts\send-position.ps1
+
+# 10回送信（2秒間隔・座標を少しずつ移動）
+.\scripts\send-position.ps1 -Count 10 -IntervalSeconds 2
+
+# OwnTracks 互換 API
+.\scripts\send-position.ps1 -Mode owntracks -Email walker@example.com
+```
 
 ## Android / 別リポジトリ向け API
 
@@ -123,7 +139,8 @@ docker compose exec app php artisan test
 
 ## 本番（さくらレンタルサーバー）の前提
 
-- Docker / WebSocket / 常駐キューは前提にしない
+- Docker / WebSocket / 常駐キューは前提にしない（リアルタイム push はフォールバックのポーリングで動作）
 - Laravel を PHP + MySQL でデプロイ
 - HTTPS 推奨（OwnTracks の常時送信向け）
 - キューは `database` ドライバ。必要なら cron で `php artisan schedule:run`
+- リアルタイム更新を使う場合は Reverb 相当の WebSocket 常駐が必要（本リポジトリの Docker 構成を参照）

@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Events\PositionReceived;
 use App\Models\Position;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -23,6 +25,8 @@ class PositionApiTest extends TestCase
 
     public function test_authenticated_user_can_store_position(): void
     {
+        Event::fake([PositionReceived::class]);
+
         $user = User::factory()->create();
         Sanctum::actingAs($user);
 
@@ -42,6 +46,11 @@ class PositionApiTest extends TestCase
             'latitude' => 35.681236,
             'longitude' => 139.767125,
         ]);
+
+        Event::assertDispatched(PositionReceived::class, function (PositionReceived $event) use ($user) {
+            return $event->position->user_id === $user->id
+                && (float) $event->position->latitude === 35.681236;
+        });
     }
 
     public function test_api_login_issues_token_and_allows_position_store(): void

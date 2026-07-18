@@ -2,6 +2,7 @@ import L from 'leaflet';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+import './echo';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -15,7 +16,8 @@ L.Icon.Default.mergeOptions({
     shadowSize: [41, 41],
 });
 
-const POLL_INTERVAL_MS = 5000;
+/** Reverb 未接続時のフォールバック */
+const POLL_INTERVAL_MS = 30000;
 const SELF_SHARE_INTERVAL_MS = 15000;
 const SELF_ZOOM_LEVEL = 17;
 /** この精度(m)以下になったら本ズームする */
@@ -225,24 +227,39 @@ function setSelfStatus(message, isError = false) {
     selfLocationStatus.classList.toggle('text-gray-400', !isError);
 }
 
+function applyPositionUpdate(position) {
+    // 自分の位置をブラウザGPSで追跡中は、APIの古い値で上書きしない
+    if (selfWatchId !== null && Number(position.user_id) === currentUserId) {
+        return;
+    }
+
+    upsertMarker(position);
+    syncHistoryOptions([position]);
+}
+
 async function refreshLatestPositions() {
     const payload = await apiGet('/api/positions/latest');
     const positions = payload.data ?? [];
 
     positions.forEach((position) => {
-        // 自分の位置をブラウザGPSで追跡中は、APIの古い値で上書きしない
-        if (selfWatchId !== null && Number(position.user_id) === currentUserId) {
-            return;
-        }
-        upsertMarker(position);
+        applyPositionUpdate(position);
     });
-    syncHistoryOptions(positions);
 
     if (!hasFittedBounds && positions.length > 0 && selfWatchId === null) {
         const bounds = L.latLngBounds(positions.map((p) => [p.latitude, p.longitude]));
         map.fitBounds(bounds.pad(0.2));
         hasFittedBounds = true;
     }
+}
+
+function subscribeRealtimePositions() {
+    if (!window.Echo) {
+        return;
+    }
+
+    window.Echo.private('positions').listen('.position.received', (position) => {
+        applyPositionUpdate(position);
+    });
 }
 
 function clearHistoryLayers() {
@@ -650,6 +667,8 @@ historyApplyBtn?.addEventListener('click', () => {
 shareLocationBtn?.addEventListener('click', () => {
     startSharingLocation();
 });
+
+subscribeRealtimePositions();
 
 refreshLatestPositions().catch((error) => {
     console.error(error);

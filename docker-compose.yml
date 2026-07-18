@@ -44,6 +44,11 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-secret}
       TEST_DB_DATABASE: ${TEST_DB_DATABASE:-gps_position_testing}
       DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      BROADCAST_CONNECTION: reverb
+      # コンテナ内から Reverb へ配信するためのホスト（ブラウザ向けは .env の localhost）
+      REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
 
   queue:
     build:
@@ -85,6 +90,31 @@ services:
     environment: *app_environment
     command: ["sh", "-c", "while true; do php artisan schedule:run --no-interaction; sleep 60; done"]
 
+  reverb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gps_position_reverb
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - .:/var/www
+      - vendor_data:/var/www/vendor
+      - bootstrap_cache_data:/var/www/bootstrap/cache
+      - storage_views_data:/var/www/storage/framework/views
+    networks:
+      - gps_position
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      <<: *app_environment
+      # WebSocket クライアントの Host 検証用（ブラウザは localhost:8080 経由）
+      REVERB_HOST: localhost
+      REVERB_SERVER_HOST: 0.0.0.0
+      REVERB_SERVER_PORT: 8080
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+
   nginx:
     image: nginx:1.27-alpine
     container_name: gps_position_nginx
@@ -99,6 +129,8 @@ services:
     depends_on:
       app:
         condition: service_healthy
+      reverb:
+        condition: service_started
 
   mysql:
     image: mysql:8.0

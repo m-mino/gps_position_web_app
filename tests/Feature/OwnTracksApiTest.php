@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Events\PositionReceived;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class OwnTracksApiTest extends TestCase
@@ -12,6 +14,8 @@ class OwnTracksApiTest extends TestCase
 
     public function test_owntracks_accepts_location_with_basic_auth(): void
     {
+        Event::fake([PositionReceived::class]);
+
         $user = User::factory()->create([
             'email' => 'tracker@example.com',
             'password' => 'password',
@@ -33,6 +37,11 @@ class OwnTracksApiTest extends TestCase
             'latitude' => 34.6805,
             'longitude' => 134.9072,
         ]);
+
+        Event::assertDispatched(PositionReceived::class, function (PositionReceived $event) use ($user) {
+            return $event->position->user_id === $user->id
+                && (float) $event->position->latitude === 34.6805;
+        });
     }
 
     public function test_owntracks_accepts_bearer_token(): void
@@ -67,6 +76,8 @@ class OwnTracksApiTest extends TestCase
 
     public function test_owntracks_ignores_non_location_payloads(): void
     {
+        Event::fake([PositionReceived::class]);
+
         User::factory()->create([
             'email' => 'tracker@example.com',
             'password' => 'password',
@@ -81,5 +92,6 @@ class OwnTracksApiTest extends TestCase
             ->assertExactJson([]);
 
         $this->assertDatabaseCount('positions', 0);
+        Event::assertNotDispatched(PositionReceived::class);
     }
 }

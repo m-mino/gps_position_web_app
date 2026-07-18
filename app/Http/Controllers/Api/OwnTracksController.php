@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\PositionReceived;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Carbon\Carbon;
@@ -47,12 +48,14 @@ class OwnTracksController extends Controller
                 continue;
             }
 
-            $user->positions()->create([
+            $position = $user->positions()->create([
                 'latitude' => (float) $item['lat'],
                 'longitude' => (float) $item['lon'],
                 'accuracy' => isset($item['acc']) ? (float) $item['acc'] : null,
                 'recorded_at' => Carbon::createFromTimestamp((int) $item['tst']),
             ]);
+
+            PositionReceived::dispatch($position);
         }
 
         // OwnTracks は空配列レスポンスを期待する

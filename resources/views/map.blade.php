@@ -11,7 +11,7 @@
                 <div class="p-4 border-b border-gray-100 flex flex-col gap-3">
                     <div class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                         <div>
-                            <p class="text-sm text-gray-500">全ユーザーの現在地を表示します（約5秒ごとに更新）</p>
+                            <p class="text-sm text-gray-500">全ユーザーの現在地をリアルタイム表示します（位置受信時に更新）</p>
                             <p id="self-location-status" class="text-sm text-gray-400 mt-1">自分の現在地: 未取得</p>
                         </div>
                         <button

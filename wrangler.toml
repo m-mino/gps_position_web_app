@@ -1,0 +1,21 @@
+name = "gps-position-web-app"
+main = "src/index.ts"
+compatibility_date = "2025-07-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gps_position"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[vars]
+APP_NAME = "GPS Position"
+APP_TIMEZONE = "Asia/Tokyo"
+# session: ローカル開発用のメール/パスワード認証
+# access: Cloudflare Access (Zero Trust) JWT 認証
+AUTH_MODE = "session"

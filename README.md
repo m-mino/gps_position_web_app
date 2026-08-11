@@ -2,145 +2,111 @@
 
 GPS端末から送られる位置情報を収集し、Webブラウザの地図上で現在地・移動履歴を確認するアプリケーションです。
 
-- **本リポジトリ**: Webアプリ（ログイン・地図）と位置受信API
-- **Androidネイティブ自作**: 必須ではない（下記 OwnTracks でバックグラウンド送信可）
+- **ランタイム**: Cloudflare Workers
+- **フレームワーク**: Hono
+- **データベース**: Cloudflare D1
+- **認証**: Cloudflare Access（本番） / セッション認証（ローカル）
 
 詳細仕様は [docs/仕様書.md](docs/仕様書.md) を参照してください。
 
-## ローカル起動（Docker）
+## ローカル起動
+
+前提: Node.js 20+、Cloudflare アカウント（リモートデプロイ時）
 
 ```powershell
-docker compose up -d
-docker compose exec app php artisan migrate
-docker compose exec app php artisan db:seed
+npm install
+npm run db:migrate:local
+npm run db:seed:local
+npm run dev
 ```
 
-フロントエンド資産のビルド（ホストに Node がない場合）:
-
-```powershell
-docker run --rm -v "${PWD}:/app" -w /app node:22-bookworm bash -c "npm install && npm run build"
-```
-
-- Web: http://localhost:8080
+- Web: http://localhost:8787
 - シードユーザー: `test@example.com` / `password`
-- リアルタイム更新: `reverb` サービス（Laravel Reverb）が WebSocket を担当。nginx の `/app` 経由で接続
+- 更新方式: 最新位置APIの **30秒ポーリング**（Workers では Reverb 相当の常駐WSは使わない）
 
 ## Web の使い方
 
-1. ログインする
-2. マップ画面で全ユーザーの現在地を確認（位置API受信時にリアルタイム更新）
+1. ログインする（ローカルはメール/パスワード）
+2. マップ画面で全ユーザーの現在地を確認
 3. 移動履歴はユーザー・日付を指定して表示（軌跡・滞在・方向矢印）
 
-## バックグラウンド位置送信（推奨: OwnTracks）
+## 認証モード
 
-Androidでバックグラウンド送信するには、自作アプリの代わりに [OwnTracks](https://owntracks.org/)（Playストア無料）を使えます。
+| モード | 設定 | 用途 |
+|--------|------|------|
+| `session` | `AUTH_MODE=session`（デフォルト） | ローカル開発。Cookie セッション |
+| `access` | `AUTH_MODE=access` + `CF_ACCESS_TEAM_NAME` | 本番。Cloudflare Access JWT |
 
-### 設定手順
+本番では Cloudflare Zero Trust でアプリケーションを作成し、Workers の前段（または Worker 自体）を Access で保護します。
 
-1. Playストアで **OwnTracks** をインストール
-2. 設定（Preferences）を開く
-3. **Mode** を `HTTP` にする
-4. 次を設定する
+```toml
+# wrangler.toml または dashboard vars
+AUTH_MODE = "access"
+CF_ACCESS_TEAM_NAME = "your-team"
+CF_ACCESS_AUD = "your-application-aud"
+```
+
+端末向け API（OwnTracks / `POST /api/login`）は Access をバイパスし、Basic または Bearer トークンで認証します。Cloudflare Access のポリシーで `/api/owntracks` と `/api/login` を Bypass にしてください。
+
+## バックグラウンド位置送信（OwnTracks）
 
 | 項目 | 値（ローカル例） |
 |------|------------------|
-| Host / URL | `http://<PCのLAN IP>:8080/api/owntracks` |
+| Host / URL | `http://127.0.0.1:8787/api/owntracks` |
 | Authentication | Username / Password |
-| Username | Webと同じメール（例: `walker@example.com`） |
-| Password | Webと同じパスワード（例: `password`） |
-
-5. 位置情報・バックグラウンド実行を許可する
-6. 必要なら Reporting interval（報告間隔）を調整する
-
-`localhost` は端末から見えないため、Dockerホストの LAN IP（例: `192.168.x.x`）を指定してください。本番では `https://あなたのドメイン/api/owntracks` を使います。
-
-送信された位置は、ログインユーザー（Basic認証のメール）の位置として地図に表示されます。
-
-### 動作確認
+| Username | `walker@example.com` |
+| Password | `password` |
 
 ```powershell
-curl.exe -u walker@example.com:password -H "Content-Type: application/json" -d "{\"_type\":\"location\",\"lat\":34.6805,\"lon\":134.9072,\"acc\":10,\"tst\":1720000000}" http://localhost:8080/api/owntracks
+curl.exe -u walker@example.com:password -H "Content-Type: application/json" -d "{\"_type\":\"location\",\"lat\":34.6805,\"lon\":134.9072,\"acc\":10,\"tst\":1720000000}" http://127.0.0.1:8787/api/owntracks
 ```
 
-成功時は空配列 `[]` が返ります。
-
-### PowerShell で位置送信テスト
-
-リアルタイム地図更新の確認用スクリプトです。
+### PowerShell テスト
 
 ```powershell
-# Sanctum: ログイン → POST /api/positions（1回）
-.\scripts\send-position.ps1
-
-# 10回送信（2秒間隔・座標を少しずつ移動）
-.\scripts\send-position.ps1 -Count 10 -IntervalSeconds 2
-
-# OwnTracks 互換 API
-.\scripts\send-position.ps1 -Mode owntracks -Email walker@example.com
+.\scripts\send-position.ps1 -BaseUrl http://127.0.0.1:8787
+.\scripts\send-position.ps1 -BaseUrl http://127.0.0.1:8787 -Mode owntracks
 ```
 
-## Android / 別リポジトリ向け API
+## デプロイ
 
-ベースURL例: `http://localhost:8080`
-
-### 1. ログイン
-
-`POST /api/login`
-
-```json
-{
-  "email": "test@example.com",
-  "password": "password",
-  "device_name": "android-device-1"
-}
-```
-
-レスポンスの `token` を以降のリクエストに付与します。
-
-`Authorization: Bearer {token}`
-
-### 2. 位置情報の送信
-
-`POST /api/positions`
-
-```json
-{
-  "latitude": 35.681236,
-  "longitude": 139.767125,
-  "accuracy": 12.5,
-  "recorded_at": "2026-07-16T12:00:00+09:00"
-}
-```
-
-`user_id` はトークンのユーザーから決定されます（クライアント指定不可）。
-
-### 3. OwnTracks 受信
-
-`POST /api/owntracks`（Basic認証または Bearer）
-
-### 4. ログアウト
-
-`POST /api/logout`（Bearer 必須）
-
-### その他
-
-| Method | Path | 説明 |
-|--------|------|------|
-| GET | `/api/positions/latest` | 全ユーザーの最新位置 |
-| GET | `/api/positions?user_id=1&from=YYYY-MM-DD&to=YYYY-MM-DD` | 移動履歴 |
-
-APIの詳細は [docs/仕様書.md](docs/仕様書.md) の「API契約」を参照してください。
-
-## テスト
+1. D1 を作成して `wrangler.toml` の `database_id` を更新
 
 ```powershell
-docker compose exec app php artisan test
+npx wrangler d1 create gps_position
 ```
 
-## 本番（さくらレンタルサーバー）の前提
+2. マイグレーション・シード・デプロイ
 
-- Docker / WebSocket / 常駐キューは前提にしない（リアルタイム push はフォールバックのポーリングで動作）
-- Laravel を PHP + MySQL でデプロイ
-- HTTPS 推奨（OwnTracks の常時送信向け）
-- キューは `database` ドライバ。必要なら cron で `php artisan schedule:run`
-- リアルタイム更新を使う場合は Reverb 相当の WebSocket 常駐が必要（本リポジトリの Docker 構成を参照）
+```powershell
+npm run db:migrate:remote
+npm run db:seed:remote   # 任意
+npm run deploy
+```
+
+3. Cloudflare Access を有効化し、`AUTH_MODE=access` とチーム名 / AUD を設定
+
+```powershell
+npx wrangler secret put SESSION_SECRET
+```
+
+## API 概要
+
+| Method | Path | Auth | 説明 |
+|--------|------|------|------|
+| POST | `/api/login` | なし | 端末用トークン発行 |
+| POST | `/api/logout` | Bearer | トークン削除 |
+| POST | `/api/positions` | Bearer/Session/Access | 位置登録 |
+| GET | `/api/positions/latest` | Bearer/Session/Access | 全ユーザー最新位置 |
+| GET | `/api/positions` | Bearer/Session/Access | 履歴 + 滞在 |
+| POST | `/api/owntracks` | Basic or Bearer | OwnTracks 互換 |
+
+## 開発コマンド
+
+| コマンド | 説明 |
+|----------|------|
+| `npm run dev` | ローカル Worker 起動 |
+| `npm test` | 単体テスト |
+| `npm run typecheck` | 型チェック |
+| `npm run db:migrate:local` | ローカル D1 マイグレーション |
+| `npm run db:seed:local` | ローカル D1 シード |

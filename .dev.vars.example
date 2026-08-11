@@ -1,0 +1,6 @@
+# セッション署名用（本番は wrangler secret put SESSION_SECRET）
+SESSION_SECRET=dev-session-secret-change-me
+
+# Cloudflare Access（本番で AUTH_MODE=access のとき）
+# CF_ACCESS_TEAM_NAME=your-team
+# CF_ACCESS_AUD=your-application-aud

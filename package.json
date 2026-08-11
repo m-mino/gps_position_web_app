@@ -1,25 +1,33 @@
 {
-    "$schema": "https://www.schemastore.org/package.json",
-    "private": true,
-    "type": "module",
-    "scripts": {
-        "build": "vite build",
-        "dev": "vite"
-    },
-    "devDependencies": {
-        "@tailwindcss/forms": "^0.5.2",
-        "@tailwindcss/vite": "^4.0.0",
-        "alpinejs": "^3.4.2",
-        "autoprefixer": "^10.4.2",
-        "concurrently": "^9.0.1",
-        "laravel-vite-plugin": "^3.1",
-        "postcss": "^8.4.31",
-        "tailwindcss": "^3.1.0",
-        "vite": "^8.0.0"
-    },
-    "dependencies": {
-        "laravel-echo": "^2.4.0",
-        "leaflet": "^1.9.4",
-        "pusher-js": "^8.5.0"
-    }
+  "name": "gps-position-web-app",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build:client && wrangler dev",
+    "build": "npm run build:client",
+    "build:client": "vite build",
+    "deploy": "npm run build && wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply gps_position --local",
+    "db:migrate:remote": "wrangler d1 migrations apply gps_position --remote",
+    "db:seed:generate": "node scripts/generate-seed.mjs",
+    "db:seed:local": "npm run db:seed:generate && wrangler d1 execute gps_position --local --file=./seed/seed.sql",
+    "db:seed:remote": "npm run db:seed:generate && wrangler d1 execute gps_position --remote --file=./seed/seed.sql",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "@hono/cloudflare-access": "^0.3.1",
+    "hono": "^4.8.5",
+    "leaflet": "^1.9.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250712.0",
+    "@types/leaflet": "^1.9.19",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.2.4",
+    "wrangler": "4.24.4"
+  }
 }

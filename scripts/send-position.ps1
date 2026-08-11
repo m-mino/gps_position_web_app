@@ -6,10 +6,10 @@
 #   .\scripts\send-position.ps1 -Mode owntracks
 #   .\scripts\send-position.ps1 -Email walker@example.com -Latitude 34.6805 -Longitude 134.9072
 #
-# Requires: docker compose up -d, seeded users
+# Requires: npm run dev, seeded users (npm run db:seed:local)
 
 param(
-    [string] $BaseUrl = "http://localhost:8080",
+    [string] $BaseUrl = "http://127.0.0.1:8787",
     [string] $Email = "walker@example.com",
     [string] $Password = "password",
     [ValidateSet("positions", "owntracks")]

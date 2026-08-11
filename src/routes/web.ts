@@ -3,6 +3,8 @@ import { deleteCookie, setCookie } from "hono/cookie";
 import type { AppVariables, Env } from "../types";
 import {
   accessRequiredPage,
+  dataTablesPage,
+  gpsUsersPage,
   loginPage,
   mapPage,
   profilePage,
@@ -16,9 +18,18 @@ import {
   deleteSession,
   deleteUser,
   findUserByEmail,
+  findUserById,
+  listGpsUsers,
+  listUsers,
   updateUserPassword,
   updateUserProfile,
 } from "../services/users";
+import {
+  browseTable,
+  DEFAULT_TABLE,
+  isDataTableName,
+  listTableSummaries,
+} from "../services/tables";
 import { verifyPassword } from "../lib/password";
 import { getCookie } from "hono/cookie";
 
@@ -123,6 +134,130 @@ web.get("/dashboard", requireUser, (c) => c.redirect("/map"));
 
 web.get("/map", requireUser, (c) => {
   return c.html(mapPage(c.env.APP_NAME, c.get("user")));
+});
+
+web.get("/tables", requireUser, async (c) => {
+  const tableRaw = c.req.query("table");
+  const table = isDataTableName(tableRaw) ? tableRaw : DEFAULT_TABLE;
+  const page = Number(c.req.query("page") ?? "1");
+  const userIdRaw = c.req.query("user_id");
+  const userId = userIdRaw && Number.isInteger(Number(userIdRaw)) ? Number(userIdRaw) : null;
+
+  const [summaries, browse, users] = await Promise.all([
+    listTableSummaries(c.env.DB),
+    browseTable(c.env.DB, table, {
+      page: Number.isInteger(page) && page > 0 ? page : 1,
+      userId,
+    }),
+    listUsers(c.env.DB),
+  ]);
+
+  return c.html(dataTablesPage(c.env.APP_NAME, c.get("user"), summaries, browse, users));
+});
+
+web.get("/users", requireUser, async (c) => {
+  const users = await listGpsUsers(c.env.DB);
+  return c.html(gpsUsersPage(c.env.APP_NAME, c.get("user"), users));
+});
+
+web.post("/users", requireUser, async (c) => {
+  const viewer = c.get("user");
+  const body = await c.req.parseBody();
+  const action = String(body._action ?? "create_user");
+
+  const render = async (
+    opts: {
+      message?: string;
+      error?: string;
+      form?: Partial<{ name: string; email: string }>;
+      openUserId?: number;
+    },
+    status: 200 | 400 | 422 = 200,
+  ) => {
+    const users = await listGpsUsers(c.env.DB);
+    return c.html(gpsUsersPage(c.env.APP_NAME, viewer, users, opts), status);
+  };
+
+  if (action === "update_password") {
+    const userId = Number(body.user_id);
+    const password = String(body.password ?? "");
+    const confirmation = String(body.password_confirmation ?? "");
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return render({ error: "対象ユーザーが不正です。" }, 400);
+    }
+
+    const target = await findUserById(c.env.DB, userId);
+    if (!target || !target.password_hash) {
+      return render({ error: "対象のGPSユーザーが見つかりません。" }, 422);
+    }
+    if (password.length < 8 || password !== confirmation) {
+      return render(
+        {
+          error: "新しいパスワードは8文字以上で、確認入力と一致させてください。",
+          openUserId: userId,
+        },
+        422,
+      );
+    }
+
+    await updateUserPassword(c.env.DB, userId, password);
+    return render({
+      message: `「${target.name}」のパスワードを更新しました。`,
+      openUserId: userId,
+    });
+  }
+
+  if (action === "delete_user") {
+    const userId = Number(body.user_id);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return render({ error: "対象ユーザーが不正です。" }, 400);
+    }
+    if (userId === viewer.id) {
+      return render(
+        { error: "自分自身のアカウントはこの画面からは削除できません。", openUserId: userId },
+        422,
+      );
+    }
+
+    const target = await findUserById(c.env.DB, userId);
+    if (!target || !target.password_hash) {
+      return render({ error: "対象のGPSユーザーが見つかりません。" }, 422);
+    }
+
+    await deleteUser(c.env.DB, userId);
+    return render({ message: `「${target.name}」を削除しました。` });
+  }
+
+  if (action !== "create_user") {
+    return render({ error: "不明な操作です。" }, 400);
+  }
+
+  const name = String(body.name ?? "").trim();
+  const email = String(body.email ?? "").trim().toLowerCase();
+  const password = String(body.password ?? "");
+  const confirmation = String(body.password_confirmation ?? "");
+  const form = { name, email };
+
+  if (!name || !email || password.length < 8) {
+    return render(
+      { error: "表示名・ユーザーID・8文字以上のパスワードを入力してください。", form },
+      422,
+    );
+  }
+  if (password !== confirmation) {
+    return render({ error: "パスワードが一致しません。", form }, 422);
+  }
+
+  const existing = await findUserByEmail(c.env.DB, email);
+  if (existing) {
+    return render({ error: "このユーザーIDは既に登録されています。", form }, 422);
+  }
+
+  const created = await createUser(c.env.DB, { name, email, password });
+  return render({
+    message: `「${created.name}」を登録しました。ネイティブアプリではユーザーID「${created.email}」とパスワードでログインしてください。`,
+  });
 });
 
 web.get("/profile", requireUser, (c) => {

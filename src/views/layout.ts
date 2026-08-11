@@ -15,6 +15,8 @@ export function renderLayout(options: LayoutOptions): string {
     ? `
       <nav class="nav">
         <a href="/map">マップ</a>
+        <a href="/users">GPSユーザー</a>
+        <a href="/tables">データテーブル</a>
         <a href="/profile">プロフィール</a>
         <form method="post" action="/logout" class="inline">
           <button type="submit" class="linkish">ログアウト</button>
@@ -63,7 +65,7 @@ export function renderLayout(options: LayoutOptions): string {
       z-index: 10;
     }
     .brand { font-weight: 700; color: var(--text); text-decoration: none; }
-    .nav { display: flex; gap: 1rem; align-items: center; }
+    .nav { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: center; }
     .nav a, .linkish {
       color: var(--muted);
       text-decoration: none;

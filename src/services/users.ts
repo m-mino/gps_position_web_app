@@ -19,6 +19,92 @@ export async function listUsers(db: D1Database): Promise<User[]> {
   return result.results ?? [];
 }
 
+export type GpsUserSummary = {
+  id: number;
+  name: string;
+  email: string;
+  has_password: boolean;
+  created_at: string;
+  latest: {
+    latitude: number;
+    longitude: number;
+    accuracy: number | null;
+    recorded_at: string;
+  } | null;
+};
+
+/** GPS端末向けアカウント一覧（最新位置つき） */
+export async function listGpsUsers(db: D1Database): Promise<GpsUserSummary[]> {
+  const result = await db
+    .prepare(
+      `SELECT
+         u.id,
+         u.name,
+         u.email,
+         u.password_hash,
+         u.created_at,
+         p.latitude AS latest_latitude,
+         p.longitude AS latest_longitude,
+         p.accuracy AS latest_accuracy,
+         p.recorded_at AS latest_recorded_at
+       FROM users u
+       LEFT JOIN (
+         SELECT user_id, MAX(recorded_at) AS max_recorded_at
+         FROM positions
+         GROUP BY user_id
+       ) latest ON latest.user_id = u.id
+       LEFT JOIN positions p
+         ON p.user_id = latest.user_id
+        AND p.recorded_at = latest.max_recorded_at
+       WHERE u.password_hash IS NOT NULL
+       ORDER BY u.id ASC`,
+    )
+    .all<{
+      id: number;
+      name: string;
+      email: string;
+      password_hash: string | null;
+      created_at: string;
+      latest_latitude: number | null;
+      latest_longitude: number | null;
+      latest_accuracy: number | null;
+      latest_recorded_at: string | null;
+    }>();
+
+  const seen = new Set<number>();
+  const users: GpsUserSummary[] = [];
+
+  for (const row of result.results ?? []) {
+    if (seen.has(row.id)) {
+      continue;
+    }
+    seen.add(row.id);
+
+    const hasLatest =
+      row.latest_latitude != null &&
+      row.latest_longitude != null &&
+      row.latest_recorded_at != null;
+
+    users.push({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      has_password: Boolean(row.password_hash),
+      created_at: row.created_at,
+      latest: hasLatest
+        ? {
+            latitude: row.latest_latitude!,
+            longitude: row.latest_longitude!,
+            accuracy: row.latest_accuracy,
+            recorded_at: new Date(row.latest_recorded_at!).toISOString(),
+          }
+        : null,
+    });
+  }
+
+  return users;
+}
+
 export async function upsertAccessUser(
   db: D1Database,
   email: string,

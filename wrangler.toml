@@ -2,6 +2,7 @@ name = "gps-position-web-app"
 main = "src/index.ts"
 compatibility_date = "2025-07-01"
 compatibility_flags = ["nodejs_compat"]
+account_id = "6b0c10f8c81d3e27c6150319eb1dba4f"
 
 [assets]
 directory = "./public"
@@ -10,12 +11,12 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "gps_position"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "3f5e43e4-df98-4841-b84c-205ec5209b12"
 migrations_dir = "migrations"
 
 [vars]
 APP_NAME = "GPS Position"
 APP_TIMEZONE = "Asia/Tokyo"
-# session: ローカル開発用のメール/パスワード認証
-# access: Cloudflare Access (Zero Trust) JWT 認証
-AUTH_MODE = "session"
+# 本番は Cloudflare Access。ローカルは .dev.vars の AUTH_MODE=session で上書き
+AUTH_MODE = "access"
+CF_ACCESS_TEAM_NAME = "green-glade-0c03"
